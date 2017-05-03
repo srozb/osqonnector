@@ -14,7 +14,7 @@ osqonnector = Bottle()
 for app in INSTALLED_APPS:
     osqonnector.merge(app.app)
 
-print("enabled apps:")
+print("enabled apps:")  # TODO: switch to logging lib or sys.stdout.write
 for app in INSTALLED_APPS:
     print(" * {}".format(app.__name__))
 print("[{}]: ready to serv ({}:{})".format(getpid(), HOST, PORT))

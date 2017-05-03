@@ -1,5 +1,7 @@
 import os
 import binascii
+import json
+from datetime import datetime
 from uuid import uuid4
 from bottle import Bottle, request, response, abort
 from . import db
@@ -10,7 +12,7 @@ response.content_type = 'text/plain'
 
 
 @app.route('/osquery/enroll', method='POST')
-def enroll():  # TODO: many to one foreign keys in bu table
+def enroll():  # TODO: autotag based on tag_rules
     "enroll a new osquery client"
     def _get_bussiness_unit(enroll_secret):
         bu_table = db['bussiness_unit']
@@ -19,10 +21,11 @@ def enroll():  # TODO: many to one foreign keys in bu table
     def _create_node_key():
         return binascii.b2a_hex(os.urandom(16))
 
-    def _insert_new_client(node_key, hostname, bussiness_unit):  # TODO: host identifier
+    def _insert_new_client(node_key, hostname, bussiness_unit):  # TODO: check if already enrolled
         osq_clients = db['osquery_client']
         osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
-                                node_key=node_key, bussiness_unit=bussiness_unit['id']))
+                                node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
+                                registered_date=datetime.now()))
 
     req = request.json
     print("got enrollment request from: {}".format(req['host_identifier']))
@@ -49,20 +52,18 @@ def config():
         client_table = db['osquery_client']
         return client_table.find_one(node_key=node_key)
 
-    def _get_options(id):
+    def _get_options(client):
         "get bussiness unit specific options"
         client_config_table = db['client_config']
-        options = client_config_table.find_one(id=id)
-        # host_identifier = db['osquery_client'].find_one(node_key=node_key)['uuid']
-        enabled_options = {}
-        for opt in options:
-            if options[opt] and opt != 'id':
-                enabled_options[opt] = str(options[opt])
-        return enabled_options
+        options = client_config_table.find_one(bussiness_unit_id=client['bussiness_unit_id'])
+        if not options:
+            options = client_config_table.find_one(name="default")
+        return json.loads(options['template_config'])
 
     def _get_event_quieries(client_id):
         "get client specific quieries"
-        event_queries = db['event_query'].find(enabled='True')  # TODO: find based on tag
+        event_queries = db['event_query'].find(
+            enabled='True')  # TODO: find based on tag
         enabled_queries = {}
         for query in event_queries:
             sql = {'query': str(query['value']),
@@ -73,7 +74,7 @@ def config():
     node_key = request.json['node_key']
     client = _get_client(node_key)
     print("config request from: {}".format(client['hostname']))
-    options = _get_options(id=2)
+    options = _get_options(client)
     schedule = _get_event_quieries(client['id'])
     response_body = {'options': options}
     if schedule:

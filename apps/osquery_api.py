@@ -12,6 +12,21 @@ app = Bottle()
 response.content_type = 'text/plain'
 
 
+def _get_client(node_key):
+    "get bussiness unit assigned to specific client"
+    client_table = db['osquery_client']
+    return client_table.find_one(node_key=node_key)
+
+
+def _get_client_tags(client):
+    "return tag ids assigned to a given client"
+    tags_table = db['osquery_client_tag']
+    tag_id = []
+    for tag in tags_table.find(osqueryclient_id=client['id']):
+        tag_id.append(tag['id'])
+    return tag_id
+
+
 @app.route('/osquery/enroll', method='POST')
 def enroll():  # TODO: autotag based on tag_rules
     "enroll a new osquery client"
@@ -49,18 +64,6 @@ def enroll():  # TODO: autotag based on tag_rules
 @app.route('/osquery/config', method='POST')
 def config():
     "deploy config file based on bussiness unit"
-    def _get_client(node_key):
-        "get bussiness unit assigned to specific client"
-        client_table = db['osquery_client']
-        return client_table.find_one(node_key=node_key)
-
-    def _get_client_tags(client):
-        "return tag ids assigned to a given client"
-        tags_table = db['osquery_client_tag']
-        tag_id = []
-        for tag in tags_table.find(osqueryclient_id=client['id']):
-            tag_id.append(tag['id'])
-        return tag_id
 
     def _get_options(client):
         "get bussiness unit specific options"
@@ -99,25 +102,33 @@ def config():
     return response_body
 
 
-@app.route('/osquery/log', method='POST')
-def log_query_result():  # TODO: send to redis
-    "receive logs and query results from client"
-    print("log received:")
-    print(request.json)
-    return ""
-
-
-@app.route('/distributed/read', method='POST')
+@app.route('/osquery/distributed/read', method='POST')
 def distributed_read():
     "deploy distributed queries to client"
-    print("DISTRIBUTED READ:")
-    print(request.json)
-    return ""
+    def _get_distributed_queries(tags):
+        "get client specific quieries"
+        ids = []
+        for row in db['distributed_query_tag'].find(tag_id=tags):
+            ids.append(row['id'])
+        distributed_queries = db['distributed_query'].find(
+            enabled=1, id=ids)  # TODO: test what if tag=None
+        enabled_queries = {}  # TODO: append untagged queries
+        for query in distributed_queries:
+            enabled_queries[query['name']] = query['value']
+        return enabled_queries
+    node_key = request.json['node_key']
+    client = _get_client(node_key)
+    client_tags = _get_client_tags(client)
+    queries = _get_distributed_queries(tags=client_tags)
+    print ("get distributed queries (host:{})".format(client['hostname']))
+    response_body = {'queries': queries}
+    response_body['node invalid'] = False  # TODO: check if reenrolment needed.
+    return response_body
 
 
-@app.route('/distributed/write', method='POST')
+@app.route('/osquery/distributed/write', method='POST')
 def distributed_write():
     "receive distributed query result"
-    print("DISTRIBUTED WRITE")
-    print(request.json)
-    return ""
+    print("distributed query result received:")
+    print json.dumps(request.json, indent=4, sort_keys=True)
+    return '{"node_invalid": false}'

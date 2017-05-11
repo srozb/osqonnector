@@ -3,20 +3,24 @@ import binascii
 import json
 from datetime import datetime
 from uuid import uuid4
-from bottle import Bottle, request, response, abort
+from bottle import Bottle, request, response, HTTPResponse
 from . import db
 
 # TODO: node_key check decorator
 # TODO: check parameter escape
 app = Bottle()
-response.content_type = 'text/plain'
-
-NEED_REENROLL = {"node_invalid": True}
+response.content_type = 'application/json'
 
 
 def _get_client():
     "get bussiness unit assigned to specific client"
-    return db['osquery_client'].find_one(node_key=request.json['node_key'])
+    client = db['osquery_client'].find_one(node_key=request.json['node_key'])
+    if not client:
+        print "[W] Node key: {} not in db. Asking to reenroll.".format(
+            request.json['node_key'])
+        raise HTTPResponse(status=200, content_type='application/json',
+        body='{"node_invalid": true}\n')
+    return client
 
 
 def _get_client_tags(client):
@@ -59,7 +63,7 @@ def enroll():  # TODO: autotag based on tag_rules
         }
         return response_body
     else:
-        return NEED_REENROLL
+        return {"node_invalid": True}
 
 
 @app.route('/osquery/config', method='POST')
@@ -91,8 +95,6 @@ def config():
         return enabled_queries
 
     client = _get_client()
-    if not client:
-        return NEED_REENROLL
     print("config request from: {}".format(client['hostname']))
     client_tags = _get_client_tags(client)
     options = _get_options(client)
@@ -108,8 +110,6 @@ def config():
 def log_query_result():
     "receive logs and query results from client"
     client = _get_client()
-    if not client:
-        return NEED_REENROLL
     print json.dumps(request.json, indent=4, sort_keys=True)
     return {"node_invalid": False}
 
@@ -129,8 +129,6 @@ def distributed_read():
             enabled_queries[query['name']] = query['value']
         return enabled_queries
     client = _get_client()
-    if not client:
-        return NEED_REENROLL
     client_tags = _get_client_tags(client)
     queries = _get_distributed_queries(tags=client_tags)
     print("get distributed queries (host:{})".format(client['hostname']))
@@ -143,8 +141,6 @@ def distributed_read():
 def distributed_write():
     "receive distributed query result"
     client = _get_client()
-    if not client:
-        return NEED_REENROLL
     print("distributed query result received:")
     print json.dumps(request.json, indent=4, sort_keys=True)
     return {"node_invalid": False}

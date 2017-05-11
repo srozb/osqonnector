@@ -3,12 +3,12 @@
 from os import getpid
 import bjoern
 from bottle import Bottle
-from apps import healthchecker, static_srv, osquery_api, osquery_logger, deployment_helper, indexer
+from apps import healthchecker, static_srv, osquery_api, deployment_helper, indexer
 
 HOST = 'localhost'
 PORT = 8000
 INSTALLED_APPS = (healthchecker, static_srv, osquery_api,
-                  osquery_logger, deployment_helper, indexer)
+                  deployment_helper, indexer)
 
 osqonnector = Bottle()
 for app in INSTALLED_APPS:

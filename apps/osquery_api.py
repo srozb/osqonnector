@@ -11,6 +11,8 @@ from . import db
 app = Bottle()
 response.content_type = 'text/plain'
 
+NEED_REENROLL = {"node_invalid": True}
+
 
 def _get_client(node_key):
     "get bussiness unit assigned to specific client"
@@ -23,7 +25,7 @@ def _get_client_tags(client):
     tags_table = db['osquery_client_tag']
     tag_id = []
     for tag in tags_table.find(osqueryclient_id=client['id']):
-        tag_id.append(tag['id'])
+        tag_id.append(tag['tag_id'])
     return tag_id
 
 
@@ -34,7 +36,7 @@ def enroll():  # TODO: autotag based on tag_rules
         bu_table = db['bussiness_unit']
         return bu_table.find_one(secret=enroll_secret)
 
-    def _create_node_key():
+    def _generate_node_key():
         return binascii.b2a_hex(os.urandom(16))
 
     # TODO: check if already enrolled
@@ -48,17 +50,17 @@ def enroll():  # TODO: autotag based on tag_rules
     print("got enrollment request from: {}".format(req['host_identifier']))
     b_unit = _get_bussiness_unit(req['enroll_secret'])
     if b_unit:
-        node_key = _create_node_key()
+        node_key = _generate_node_key()
         _insert_new_client(node_key, req['host_identifier'], b_unit)
         print("client {} enrolled sucessfully.".format(
             req['host_identifier']))
         response_body = {
             "node_key": node_key,
-            "node_invalid": "false"
+            "node_invalid": False
         }
         return response_body
     else:
-        return abort(401, "enrollment secret invalid")
+        return NEED_REENROLL
 
 
 @app.route('/osquery/config', method='POST')
@@ -91,15 +93,28 @@ def config():
 
     node_key = request.json['node_key']
     client = _get_client(node_key)
+    if not client:
+        return NEED_REENROLL
     print("config request from: {}".format(client['hostname']))
     client_tags = _get_client_tags(client)
     options = _get_options(client)
     schedule = _get_event_quieries(client_tags)
     response_body = {'options': options}
-    if schedule:  # append to config only if not empty
+    if schedule:  # append to config only if not empty, TODO: remove if not needed
         response_body['schedule'] = schedule
     print response_body
     return response_body
+
+
+@app.route('/osquery/log', method='POST')
+def log_query_result():
+    "receive logs and query results from client"
+    node_key = request.json['node_key']
+    client = _get_client(node_key)
+    if not client:
+        return NEED_REENROLL
+    print json.dumps(request.json, indent=4, sort_keys=True)
+    return {"node_invalid": False}
 
 
 @app.route('/osquery/distributed/read', method='POST')
@@ -118,17 +133,23 @@ def distributed_read():
         return enabled_queries
     node_key = request.json['node_key']
     client = _get_client(node_key)
+    if not client:
+        return NEED_REENROLL
     client_tags = _get_client_tags(client)
     queries = _get_distributed_queries(tags=client_tags)
-    print ("get distributed queries (host:{})".format(client['hostname']))
+    print("get distributed queries (host:{})".format(client['hostname']))
     response_body = {'queries': queries}
-    response_body['node invalid'] = False  # TODO: check if reenrolment needed.
+    response_body['node invalid'] = False
     return response_body
 
 
 @app.route('/osquery/distributed/write', method='POST')
 def distributed_write():
     "receive distributed query result"
+    node_key = request.json['node_key']
+    client = _get_client(node_key)
+    if not client:
+        return NEED_REENROLL
     print("distributed query result received:")
     print json.dumps(request.json, indent=4, sort_keys=True)
-    return '{"node_invalid": false}'
+    return {"node_invalid": False}

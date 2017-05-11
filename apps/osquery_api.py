@@ -14,10 +14,9 @@ response.content_type = 'text/plain'
 NEED_REENROLL = {"node_invalid": True}
 
 
-def _get_client(node_key):
+def _get_client():
     "get bussiness unit assigned to specific client"
-    client_table = db['osquery_client']
-    return client_table.find_one(node_key=node_key)
+    return db['osquery_client'].find_one(node_key=request.json['node_key'])
 
 
 def _get_client_tags(client):
@@ -91,8 +90,7 @@ def config():
             enabled_queries[str(query['name'])] = sql
         return enabled_queries
 
-    node_key = request.json['node_key']
-    client = _get_client(node_key)
+    client = _get_client()
     if not client:
         return NEED_REENROLL
     print("config request from: {}".format(client['hostname']))
@@ -109,8 +107,7 @@ def config():
 @app.route('/osquery/log', method='POST')
 def log_query_result():
     "receive logs and query results from client"
-    node_key = request.json['node_key']
-    client = _get_client(node_key)
+    client = _get_client()
     if not client:
         return NEED_REENROLL
     print json.dumps(request.json, indent=4, sort_keys=True)
@@ -131,8 +128,7 @@ def distributed_read():
         for query in distributed_queries:
             enabled_queries[query['name']] = query['value']
         return enabled_queries
-    node_key = request.json['node_key']
-    client = _get_client(node_key)
+    client = _get_client()
     if not client:
         return NEED_REENROLL
     client_tags = _get_client_tags(client)
@@ -146,8 +142,7 @@ def distributed_read():
 @app.route('/osquery/distributed/write', method='POST')
 def distributed_write():
     "receive distributed query result"
-    node_key = request.json['node_key']
-    client = _get_client(node_key)
+    client = _get_client()
     if not client:
         return NEED_REENROLL
     print("distributed query result received:")

@@ -19,7 +19,7 @@ def _get_client():
         print "[W] Node key: {} not in db. Asking to reenroll.".format(
             request.json['node_key'])
         raise HTTPResponse(status=200, content_type='application/json',
-        body='{"node_invalid": true}\n')
+                           body='{"node_invalid": true}\n')
     return client
 
 
@@ -43,18 +43,20 @@ def enroll():  # TODO: autotag based on tag_rules
         return binascii.b2a_hex(os.urandom(16))
 
     # TODO: check if already enrolled
-    def _insert_new_client(node_key, hostname, bussiness_unit):
+    def _insert_new_client(node_key, hostname, bussiness_unit, ip, useragent):
         osq_clients = db['osquery_client']
         osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
                                 node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
-                                registered_date=datetime.now()))
+                                registered_date=datetime.now(), ip=ip, version=useragent))
 
     req = request.json
     print("got enrollment request from: {}".format(req['host_identifier']))
     b_unit = _get_bussiness_unit(req['enroll_secret'])
     if b_unit:
         node_key = _generate_node_key()
-        _insert_new_client(node_key, req['host_identifier'], b_unit)
+        ip = request.remote_addr
+        useragent = request.get_header("user-agent")
+        _insert_new_client(node_key, req['host_identifier'], b_unit, ip, useragent)
         print("client {} enrolled sucessfully.".format(
             req['host_identifier']))
         response_body = {

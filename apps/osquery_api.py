@@ -47,7 +47,8 @@ def enroll():  # TODO: autotag based on tag_rules
         osq_clients = db['osquery_client']
         osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
                                 node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
-                                registered_date=datetime.now(), ip=ip, version=useragent))
+                                registered_date=datetime.now(), ip=ip, version=useragent,
+                                last_distributed_id=0))
 
     req = request.json
     print("got enrollment request from: {}".format(req['host_identifier']))
@@ -56,7 +57,8 @@ def enroll():  # TODO: autotag based on tag_rules
         node_key = _generate_node_key()
         ip = request.remote_addr
         useragent = request.get_header("user-agent")
-        _insert_new_client(node_key, req['host_identifier'], b_unit, ip, useragent)
+        _insert_new_client(
+            node_key, req['host_identifier'], b_unit, ip, useragent)
         print("client {} enrolled sucessfully.".format(
             req['host_identifier']))
         response_body = {
@@ -119,17 +121,32 @@ def log_query_result():
 @app.route('/osquery/distributed/read', method='POST')
 def distributed_read():
     "deploy distributed queries to client"
-    def _get_distributed_queries(tags):
-        "get client specific quieries"
+    def _get_query_ids_by_tag(tags):
         ids = []
         for row in db['distributed_query_tag'].find(tag_id=tags):
             ids.append(row['id'])
+        return ids
+
+    def _update_last_distributed_id(query_id):
+        client_table = db['osquery_client']
+        client_table.update(
+            dict(id=client['id'], last_distributed_id=query_id), ['id'])
+
+    def _get_distributed_queries(tags):
+        "get client specific quieries"
+        ids = _get_query_ids_by_tag(tags)
         distributed_queries = db['distributed_query'].find(
-            enabled=1, id=ids)  # TODO: test what if tag=None
+            enabled=1, id=ids, order_by='id')
+        query_id = 0
         enabled_queries = {}  # TODO: append untagged queries
         for query in distributed_queries:
-            enabled_queries[query['name']] = query['value']
+            if query['id'] > client['last_distributed_id']:
+                enabled_queries[query['name']] = query['value']
+                query_id = query['id']
+        if query_id > client['last_distributed_id']:
+            _update_last_distributed_id(query_id)
         return enabled_queries
+
     client = _get_client()
     client_tags = _get_client_tags(client)
     queries = _get_distributed_queries(tags=client_tags)

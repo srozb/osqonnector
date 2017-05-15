@@ -1,6 +1,8 @@
 import os
 import binascii
 import json
+import re
+from ipaddress import ip_address, ip_network
 from datetime import datetime
 from uuid import uuid4
 from bottle import Bottle, request, response, HTTPResponse
@@ -45,29 +47,42 @@ def enroll():  # TODO: autotag based on tag_rules
     # TODO: check if already enrolled
     def _insert_new_client(node_key, hostname, bussiness_unit, ip, useragent):
         osq_clients = db['osquery_client']
-        osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
-                                node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
-                                registered_date=datetime.now(), ip=ip, version=useragent,
-                                last_distributed_id=0))
+        return osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
+                                       node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
+                                       registered_date=datetime.now(), ip=ip, version=useragent,
+                                       last_distributed_id=0))
 
+    def _auto_assign_tags():
+        "assign tags based on TagAssignmentRules"
+        def _rule_matches(rule):
+            if rule['type'] == 'IP':
+                return ip_address(unicode(client_ip)) == ip_address(rule['value'])
+            elif rule['type'] == 'SUBNET':
+                return ip_address(unicode(client_ip)) in ip_network(rule['value'])
+            elif rule['type'] == 'REGEX':
+                return re.match(rule['value'], req['host_identifier'])
+            print "unsupported rule type"
+        for rule in db['osquery_tagassignmentrules'].find(enabled=1):
+            if _rule_matches(rule):
+                db['osquery_client_tag'].insert(dict(osqueryclient_id=client_id,
+                                                     tag_id=rule['tag_id']))
     req = request.json
     print("got enrollment request from: {}".format(req['host_identifier']))
     b_unit = _get_bussiness_unit(req['enroll_secret'])
-    if b_unit:
-        node_key = _generate_node_key()
-        ip = request.remote_addr
-        useragent = request.get_header("user-agent")
-        _insert_new_client(
-            node_key, req['host_identifier'], b_unit, ip, useragent)
-        print("client {} enrolled sucessfully.".format(
-            req['host_identifier']))
-        response_body = {
-            "node_key": node_key,
-            "node_invalid": False
-        }
-        return response_body
-    else:
+    if not b_unit:
         return {"node_invalid": True}
+    node_key = _generate_node_key()
+    client_ip = request.remote_addr
+    useragent = request.get_header("user-agent")
+    client_id = _insert_new_client(
+        node_key, req['host_identifier'], b_unit, client_ip, useragent)
+    _auto_assign_tags()
+    print("client {} enrolled sucessfully.".format(
+        req['host_identifier']))
+    return {
+        "node_key": node_key,
+        "node_invalid": False
+    }
 
 
 @app.route('/osquery/config', method='POST')
@@ -136,13 +151,14 @@ def distributed_read():
         "get client specific quieries"
         ids = _get_query_ids_by_tag(tags)
         distributed_queries = db['distributed_query'].find(
-            enabled=1, id=ids, order_by='id')
+            enabled=1, id=ids, order_by='id')  # BUG: not getting anything if tag=2
         query_id = 0
         enabled_queries = {}  # TODO: append untagged queries
         for query in distributed_queries:
             if query['id'] > client['last_distributed_id']:
                 enabled_queries[query['name']] = query['value']
                 query_id = query['id']
+        # BUG: if disabled distributed queries
         if query_id > client['last_distributed_id']:
             _update_last_distributed_id(query_id)
         return enabled_queries

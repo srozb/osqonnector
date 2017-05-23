@@ -34,6 +34,13 @@ def _get_client_tags(client):
     return tag_id
 
 
+def _update_client_communication(client):
+    "update last_communication datetime"
+    client_table = db['osquery_client']
+    client_table.update(
+        dict(id=client['id'], last_communication=datetime.utcnow()), ['id'])
+
+
 @app.route('/osquery/enroll', method='POST')
 def enroll():  # TODO: autotag based on tag_rules
     "enroll a new osquery client"
@@ -48,8 +55,11 @@ def enroll():  # TODO: autotag based on tag_rules
     def _insert_new_client(node_key, hostname, bussiness_unit, ip, useragent):
         osq_clients = db['osquery_client']
         return osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
-                                       node_key=node_key, bussiness_unit_id=bussiness_unit['id'],
-                                       registered_date=datetime.now(), ip=ip, version=useragent,
+                                       node_key=node_key,
+                                       bussiness_unit_id=bussiness_unit['id'],
+                                       registered_date=datetime.utcnow(),
+                                       last_communication=datetime.utcnow(),
+                                       ip=ip, version=useragent,
                                        last_distributed_id=0))
 
     def _auto_assign_tags():
@@ -114,6 +124,7 @@ def config():
         return enabled_queries
 
     client = _get_client()
+    _update_client_communication(client)
     print("config request from: {}".format(client['hostname']))
     client_tags = _get_client_tags(client)
     options = _get_options(client)
@@ -164,6 +175,7 @@ def distributed_read():
         return enabled_queries
 
     client = _get_client()
+    _update_client_communication(client)
     client_tags = _get_client_tags(client)
     queries = _get_distributed_queries(tags=client_tags)
     print("get distributed queries (host:{})".format(client['hostname']))

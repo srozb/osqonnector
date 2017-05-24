@@ -150,7 +150,7 @@ def log_query_result():
     client = _get_client()
     # print json.dumps(request.json, indent=4, sort_keys=True)
     message = _enrich_message(client, request.json)
-    r.publish('osquery_log', message)
+    r.lpush('osquery_log', message)
     return {"node_invalid": False}
 
 
@@ -201,5 +201,5 @@ def distributed_write():
     # print("distributed query result received:")
     # print json.dumps(request.json, indent=4, sort_keys=True)
     message = _enrich_message(client, request.json)
-    r.publish('osquery_distributed', message)
+    r.lpush('osquery_distributed', message)
     return {"node_invalid": False}

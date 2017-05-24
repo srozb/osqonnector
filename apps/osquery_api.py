@@ -47,7 +47,7 @@ def _enrich_message(client, message):
     client_data = {'client_id': client['id'], 'host_identifier': client['hostname'],
                    'uuid': client['uuid'], 'version': client['version'], 'ip': client['ip'],
                    'bu_id': client['bussiness_unit_id']}
-    return {'client': client_data, 'message': message}
+    return json.dumps({'client': client_data, 'message': message})
 
 
 @app.route('/osquery/enroll', method='POST')

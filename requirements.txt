@@ -3,3 +3,4 @@ dataset>=0.6
 redis>=2.10
 bottle>=0.12
 ipaddress
+psycopg2

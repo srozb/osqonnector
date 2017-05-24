@@ -1,2 +1,3 @@
 bjoern>=1.4.0
 dataset>=0.6
+redis>=2.10

@@ -5,7 +5,6 @@ import re
 import redis
 from ipaddress import ip_address, ip_network
 from datetime import datetime
-from uuid import uuid4
 from bottle import Bottle, request, response, HTTPResponse
 from . import db
 
@@ -44,7 +43,7 @@ def _update_client_communication(client):
 
 
 def _enrich_message(client, message):
-    client_data = {'client_id': client['id'], 'host_identifier': client['hostname'],
+    client_data = {'client_id': client['id'], 'hostname': client['hostname'],
                    'uuid': client['uuid'], 'version': client['version'], 'ip': client['ip'],
                    'bu_id': client['bussiness_unit_id']}
     return json.dumps({'client': client_data, 'message': message})
@@ -63,7 +62,7 @@ def enroll():  # TODO: autotag based on tag_rules
     # TODO: check if already enrolled
     def _insert_new_client(node_key, hostname, bussiness_unit, ip, useragent):
         osq_clients = db['osquery_client']
-        return osq_clients.insert(dict(hostname=hostname, uuid=str(uuid4()),
+        return osq_clients.insert(dict(hostname=hostname,
                                        node_key=node_key,
                                        bussiness_unit_id=bussiness_unit['id'],
                                        registered_date=datetime.utcnow(),
@@ -150,7 +149,7 @@ def log_query_result():
     client = _get_client()
     # print json.dumps(request.json, indent=4, sort_keys=True)
     message = _enrich_message(client, request.json)
-    r.lpush('osquery_log', message)
+    r.lpush('osq_preprocessed', message)
     return {"node_invalid": False}
 
 
@@ -201,5 +200,5 @@ def distributed_write():
     # print("distributed query result received:")
     # print json.dumps(request.json, indent=4, sort_keys=True)
     message = _enrich_message(client, request.json)
-    r.lpush('osquery_distributed', message)
+    r.lpush('osq_preprocessed', message)
     return {"node_invalid": False}

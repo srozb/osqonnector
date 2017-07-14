@@ -3,22 +3,27 @@
 from os import getpid
 import bjoern
 from bottle import Bottle
+import config
+from logger.logger import Logger
 from apps import healthchecker, static_srv, osquery_api, deployment_helper, indexer
 
-HOST = 'localhost'
-PORT = 8000
 INSTALLED_APPS = (healthchecker, static_srv, osquery_api,
                   deployment_helper, indexer)
 
-osqonnector = Bottle()
-for app in INSTALLED_APPS:
-    osqonnector.merge(app.app)
+def main():
+    l = Logger(__name__)
+    osqonnector = Bottle()
 
-print("enabled apps:")  # TODO: switch to logging lib or sys.stdout.write
-for app in INSTALLED_APPS:
-    print(" * {}".format(app.__name__))
-print("[{}]: ready to serv ({}:{})".format(getpid(), HOST, PORT))
-try:
-    bjoern.run(osqonnector, HOST, PORT, reuse_port=True)
-except KeyboardInterrupt:
-    print("bye.")
+    for app in INSTALLED_APPS:
+        l.debug("loading {}".format(app.__name__))
+        osqonnector.merge(app.app)
+
+    l.debug("[{}]: ready to serv ({}:{})".format(getpid(), config.HOST, config.PORT))
+    try:
+        bjoern.run(osqonnector, config.HOST, config.PORT,
+                   reuse_port=config.REUSE_PORT)
+    except KeyboardInterrupt:
+        l.info("bye.")
+
+if __name__ == "__main__":
+    main()

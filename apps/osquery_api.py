@@ -3,24 +3,29 @@ import binascii
 import json
 import re
 import redis
+import config
 from ipaddress import ip_address, ip_network
 from datetime import datetime
 from bottle import Bottle, request, response, HTTPResponse
-from . import db
+from dbconn.dbconn import get_connection
+from logger.logger import Logger
 
 # TODO: node_key check decorator
 # TODO: check parameter escape
 app = Bottle()
 response.content_type = 'application/json'
-r = redis.StrictRedis(host='localhost', port=6379, db=0)
+r = redis.StrictRedis(host=config.REDIS_HOST,
+                      port=config.REDIS_PORT, db=config.REDIS_DB)
+db = get_connection()
+l = Logger(__name__)
 
 
 def _get_client():
     "get bussiness unit assigned to specific client"
     client = db['osquery_client'].find_one(node_key=request.json['node_key'])
     if not client:
-        print "[W] Node key: {} not in db. Asking to reenroll.".format(
-            request.json['node_key'])
+        l.info("Node key: {} not in db. Asking to reenroll.".format(
+            request.json['node_key']))
         raise HTTPResponse(status=200, content_type='application/json',
                            body='{"node_invalid": true}\n')
     return client
@@ -79,13 +84,13 @@ def enroll():  # TODO: autotag based on tag_rules
                 return ip_address(unicode(client_ip)) in ip_network(rule['value'])
             elif rule['type'] == 'REGEX':
                 return re.match(rule['value'], req['host_identifier'])
-            print "unsupported rule type"
+            l.error("unsupported rule type")
         for rule in db['osquery_tagassignmentrules'].find(enabled=True):
             if _rule_matches(rule):
                 db['osquery_client_tag'].insert(dict(osqueryclient_id=client_id,
                                                      tag_id=rule['tag_id']))
     req = request.json
-    print("got enrollment request from: {}".format(req['host_identifier']))
+    l.info("enrollment request from: {}".format(req['host_identifier']))
     b_unit = _get_bussiness_unit(req['enroll_secret'])
     if not b_unit:
         return {"node_invalid": True}
@@ -95,7 +100,7 @@ def enroll():  # TODO: autotag based on tag_rules
     client_id = _insert_new_client(
         node_key, req['host_identifier'], b_unit, client_ip, useragent)
     _auto_assign_tags()
-    print("client {} enrolled sucessfully.".format(
+    l.debug("client {} enrolled sucessfully.".format(
         req['host_identifier']))
     return {
         "node_key": node_key,
@@ -133,7 +138,7 @@ def config():
 
     client = _get_client()
     _update_client_communication(client)
-    print("config request from: {}".format(client['hostname']))
+    l.debug("config request from: {}".format(client['hostname']))
     client_tags = _get_client_tags(client)
     options = _get_options(client)
     schedule = _get_event_quieries(client_tags)
@@ -147,7 +152,7 @@ def config():
 def log_query_result():
     "receive logs and query results from client"
     client = _get_client()
-    # print json.dumps(request.json, indent=4, sort_keys=True)
+    #l.debug(request.json))
     message = _enrich_message(client, request.json)
     r.lpush('osq_preprocessed', message)
     return {"node_invalid": False}
@@ -187,7 +192,7 @@ def distributed_read():
     _update_client_communication(client)
     client_tags = _get_client_tags(client)
     queries = _get_distributed_queries(tags=client_tags)
-    # print("get distributed queries (host:{})".format(client['hostname']))
+    #l.debug("get distributed queries for host:{}".format(client['hostname']))
     response_body = {'queries': queries}
     response_body['node invalid'] = False
     return response_body
@@ -197,8 +202,7 @@ def distributed_read():
 def distributed_write():
     "receive distributed query result"
     client = _get_client()
-    # print("distributed query result received:")
-    # print json.dumps(request.json, indent=4, sort_keys=True)
+    #l.debug(request.json)
     message = _enrich_message(client, request.json)
     r.lpush('osq_preprocessed', message)
     return {"node_invalid": False}

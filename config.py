@@ -28,3 +28,8 @@ REDIS_DB = 0
 DAEMON = False
 LOG_LEVEL = 'DEBUG'
 SYSLOG_ADDR = '/dev/log'
+
+###
+# Other
+#
+ZENTRAL_COMPATIBILITY = True

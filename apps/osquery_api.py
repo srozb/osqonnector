@@ -58,6 +58,8 @@ def _enrich_message(client, message):
 def enroll():  # TODO: autotag based on tag_rules
     "enroll a new osquery client"
     def _get_bussiness_unit(enroll_secret):
+        if config.ZENTRAL_COMPATIBILITY:
+            enroll_secret = enroll_secret.split(":")[0]
         bu_table = db['bussiness_unit']
         return bu_table.find_one(secret=enroll_secret)
 
@@ -109,7 +111,7 @@ def enroll():  # TODO: autotag based on tag_rules
 
 
 @app.route('/osquery/config', method='POST')
-def config():
+def get_config():
     "deploy config file based on bussiness unit"
 
     def _get_options(client):
